@@ -9,6 +9,17 @@ from ssd_loss import ssd_loss
 
 
 # =========================
+# DATASET CONFIG
+# =========================
+DATASET_ROOT = "CGI-Weapon-Dataset-2"
+
+TRAIN_ANN = f"{DATASET_ROOT}/train/_annotations.coco.json"
+TRAIN_IMG = f"{DATASET_ROOT}/train"
+
+NUM_CLASSES = 4  # background + classes
+
+
+# =========================
 # COLLATE FUNCTION
 # =========================
 def ssd_collate_fn(batch):
@@ -24,22 +35,16 @@ def ssd_collate_fn(batch):
 # =========================
 # DATASET & DATALOADER
 # =========================
-dataset = WeaponSSDDataset(
-    ann_path="CGI-Weapon-Dataset-1/valid/_annotations.coco.json",
-    img_dir="CGI-Weapon-Dataset-1/valid",
-)
+dataset = WeaponSSDDataset(ann_path=TRAIN_ANN, img_dir=TRAIN_IMG)
 
-EPOCHS = 30
-BATCH_SIZE = 4
+EPOCHS = 5
+BATCH_SIZE = 8
 LR = 1e-4
 
 loader = DataLoader(
-    dataset,
-    batch_size=BATCH_SIZE,
-    shuffle=True,
-    collate_fn=ssd_collate_fn
+    dataset, batch_size=BATCH_SIZE, shuffle=True, collate_fn=ssd_collate_fn
 )
-
+print(f"Number of batches: {len(loader)}")
 
 # =========================
 # DEVICE, MODEL, OPTIMIZER
@@ -56,11 +61,13 @@ anchors = generate_anchors().to(device)
 # TRAINING LOOP
 # =========================
 model.train()
-
+print("Starting training..........")
 for epoch in range(EPOCHS):
+    print(">>> Entered epoch loop")
     epoch_loss = 0.0
 
     for images, gt_boxes_list, gt_labels_list in loader:
+        print("Processing batch...")
         images = images.to(device)
 
         cls_preds, loc_preds = model(images)
@@ -86,15 +93,9 @@ for epoch in range(EPOCHS):
             # -------------------------
             # CLASS TARGETS
             # -------------------------
-            cls_targets = torch.zeros(
-                anchors.size(0),
-                dtype=torch.long,
-                device=device
-            )
+            cls_targets = torch.zeros(anchors.size(0), dtype=torch.long, device=device)
 
-            cls_targets[positive_mask] = gt_labels[
-                best_gt_idx[positive_mask]
-            ]
+            cls_targets[positive_mask] = gt_labels[best_gt_idx[positive_mask]]
 
             # -------------------------
             # LOCALIZATION TARGETS
@@ -112,11 +113,7 @@ for epoch in range(EPOCHS):
             # LOSS
             # -------------------------
             loss, _, _ = ssd_loss(
-                cls_preds[i],
-                loc_preds[i],
-                cls_targets,
-                loc_targets,
-                positive_mask
+                cls_preds[i], loc_preds[i], cls_targets, loc_targets, positive_mask
             )
 
             batch_loss = batch_loss + loss
@@ -137,6 +134,7 @@ for epoch in range(EPOCHS):
 # =========================
 # SAVE MODEL
 # =========================
-torch.save(model.state_dict(), "ssd_model.pth")
+MODEL_NAME = "ssd_model_d2.pth"
+torch.save(model.state_dict(), MODEL_NAME)
 print("Training complete..........")
-print("Model saved as ssd_model.pth")
+print(f"Model saved as {MODEL_NAME}")

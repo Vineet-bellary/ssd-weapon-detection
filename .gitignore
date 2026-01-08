@@ -2,3 +2,4 @@
 __pycache__/
 *.pyc
 ssd_model.pth
+CGI-Weapon-Dataset-2/
