@@ -4,30 +4,24 @@ import torch
 FEATURE_MAP_SIZE = 20
 IMAGE_SIZE = 640
 
-SCALES = [0.05, 0.1, 0.2, 0.35]
-ASPECT_RATIOS = [0.5, 1.0, 2.0, 3.0]
-
+SCALES = [0.1, 0.2]
+ASPECT_RATIOS = [1.0, 2.0]   # 2 ratios
 
 def generate_anchors():
     anchors = []
 
-    stride = IMAGE_SIZE / FEATURE_MAP_SIZE
-
     for i in range(FEATURE_MAP_SIZE):
         for j in range(FEATURE_MAP_SIZE):
-
-            # center of grid cell (normalized)
             cx = (j + 0.5) / FEATURE_MAP_SIZE
             cy = (i + 0.5) / FEATURE_MAP_SIZE
 
             for scale in SCALES:
                 for ratio in ASPECT_RATIOS:
-                    w = scale * (ratio**0.5)
-                    h = scale / (ratio**0.5)
-
+                    w = scale * (ratio ** 0.5)
+                    h = scale / (ratio ** 0.5)
                     anchors.append([cx, cy, w, h])
 
-    return torch.tensor(anchors)
+    return torch.tensor(anchors)  # [1600, 4]
 
 
 anchors = generate_anchors()

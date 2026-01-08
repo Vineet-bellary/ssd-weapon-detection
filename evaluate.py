@@ -15,6 +15,7 @@ ANN_PATH = "CGI-Weapon-Dataset-1/valid/_annotations.coco.json"
 IMG_DIR = "CGI-Weapon-Dataset-1/valid"
 
 IOU_THRESH = 0.5
+CONF_THRESH = 0.5
 
 CLASS_NAMES = {1: "pistol", 2: "rifle", 3: "shotgun"}
 
@@ -63,6 +64,23 @@ def compute_iou(box1, box2):
     return inter / union if union > 0 else 0
 
 
+def nms_numpy(boxes, scores, iou_thresh=0.5):
+    keep = []
+    idxs = scores.argsort()[::-1]
+
+    while len(idxs) > 0:
+        i = idxs[0]
+        keep.append(i)
+        if len(idxs) == 1:
+            break
+
+        rest = idxs[1:]
+        ious = [compute_iou(boxes[i], boxes[j]) for j in rest]
+        idxs = rest[np.array(ious) < iou_thresh]
+
+    return keep
+
+
 # =========================
 # LOAD COCO
 # =========================
@@ -72,7 +90,6 @@ with open(ANN_PATH, "r") as f:
 images = coco["images"]
 annotations = coco["annotations"]
 
-# map image_id → annotations
 img_to_anns = {}
 for ann in annotations:
     img_to_anns.setdefault(ann["image_id"], []).append(ann)
@@ -93,18 +110,18 @@ for img_info in tqdm(images, desc="Evaluating"):
     image_id = img_info["id"]
     file_name = img_info["file_name"]
 
-    img_path = f"{IMG_DIR}/{file_name}"
-    img = cv2.imread(img_path)
+    img = cv2.imread(f"{IMG_DIR}/{file_name}")
     if img is None:
         continue
 
     h, w, _ = img.shape
 
-    img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-    img_resized = cv2.resize(img_rgb, (640, 640))
+    img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+    img = cv2.resize(img, (640, 640))
 
-    tensor_img = torch.tensor(img_resized).permute(2, 0, 1).float() / 255.0
-    tensor_img = tensor_img.unsqueeze(0).to(device)
+    tensor_img = (torch.tensor(img).permute(2, 0, 1).float().unsqueeze(0) / 255.0).to(
+        device
+    )
 
     with torch.no_grad():
         cls_preds, loc_preds = model(tensor_img)
@@ -114,35 +131,35 @@ for img_info in tqdm(images, desc="Evaluating"):
 
     probs = torch.softmax(cls_preds, dim=1)
 
-    # ignore background
     obj_probs = probs[:, 1:]
     scores_all, labels_all = obj_probs.max(dim=1)
     labels_all = labels_all + 1
 
-    # top-1 prediction
-    scores, idxs = scores_all.topk(1)
+    mask = scores_all > CONF_THRESH
+
+    if mask.sum() == 0:
+        FN += len(img_to_anns.get(image_id, []))
+        continue
 
     pred_boxes = decode_boxes(anchors, loc_preds)
-    pred_boxes = pred_boxes.clamp(0.0, 1.0)
-    pred_boxes = pred_boxes[idxs].cpu().numpy()
-    pred_labels = labels_all[idxs].cpu().numpy()
+    pred_boxes = pred_boxes.clamp(0, 1)[mask].cpu().numpy()
+    pred_scores = scores_all[mask].cpu().numpy()
+    pred_labels = labels_all[mask].cpu().numpy()
 
-    # GT boxes
-    gt_anns = img_to_anns.get(image_id, [])
+    keep = nms_numpy(pred_boxes, pred_scores, IOU_THRESH)
+
+    pred_boxes = pred_boxes[keep]
+    pred_labels = pred_labels[keep]
+
     gt_boxes = []
     gt_labels = []
 
-    for ann in gt_anns:
+    for ann in img_to_anns.get(image_id, []):
         if ann["category_id"] == 0:
             continue
 
         x, y, bw, bh = ann["bbox"]
-        x1 = x / w
-        y1 = y / h
-        x2 = (x + bw) / w
-        y2 = (y + bh) / h
-
-        gt_boxes.append([x1, y1, x2, y2])
+        gt_boxes.append([x / w, y / h, (x + bw) / w, (y + bh) / h])
         gt_labels.append(ann["category_id"])
 
     matched = set()

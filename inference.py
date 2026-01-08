@@ -124,7 +124,7 @@ labels_all = labels_all + 1  # shift back to class ids
 
 scores, idxs = scores_all.topk(1)
 
-boxes = boxes[idxs]  # ⚠️ ONLY ONCE
+boxes = boxes[idxs]
 labels = labels_all[idxs]
 
 
