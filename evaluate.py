@@ -26,7 +26,7 @@ CLASS_NAMES = {1: "pistol", 2: "rifle", 3: "shotgun"}
 device = "cuda" if torch.cuda.is_available() else "cpu"
 
 model = SSD(num_classes=4).to(device)
-model.load_state_dict(torch.load("ssd_model.pth", map_location=device))
+model.load_state_dict(torch.load("ssd_model_d2.pth", map_location=device))
 model.eval()
 
 anchors = generate_anchors().to(device)
